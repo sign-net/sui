@@ -335,13 +335,10 @@ async fn test_move_call_args_linter_command() -> Result<(), anyhow::Error> {
     let obj = object_refs.get(1).unwrap().object_id;
 
     // Create the args
-    let addr1_str = format!("0x{:02x}", address1);
-    let args_json = json!([123u8, addr1_str]);
-
-    let mut args = vec![];
-    for a in args_json.as_array().unwrap() {
-        args.push(SuiJsonValue::new(a.clone()).unwrap());
-    }
+    let args = vec![
+        SuiJsonValue::new(json!(123u8))?,
+        SuiJsonValue::new(json!(address1))?,
+    ];
 
     // Test case with no gas specified
     let resp = SuiClientCommands::Call {
@@ -374,7 +371,7 @@ async fn test_move_call_args_linter_command() -> Result<(), anyhow::Error> {
     };
 
     // Try a bad argument: decimal
-    let args_json = json!([0.3f32, addr1_str]);
+    let args_json = json!([0.3f32, address1]);
     assert!(SuiJsonValue::new(args_json.as_array().unwrap().get(0).unwrap().clone()).is_err());
 
     // Try a bad argument: too few args
@@ -403,14 +400,10 @@ async fn test_move_call_args_linter_command() -> Result<(), anyhow::Error> {
 
     // Try a transfer
     // This should fail due to mismatch of object being sent
-    let obj_str = format!("0x{:02x}", obj);
-    let addr2_str = format!("0x{:02x}", address2);
-
-    let args_json = json!([obj_str, addr2_str]);
-    let mut args = vec![];
-    for a in args_json.as_array().unwrap() {
-        args.push(SuiJsonValue::new(a.clone()).unwrap());
-    }
+    let args = vec![
+        SuiJsonValue::new(json!(obj))?,
+        SuiJsonValue::new(json!(address2))?,
+    ];
 
     let resp = SuiClientCommands::Call {
         package: ObjectID::from_hex_literal("0x2").unwrap(),
@@ -430,14 +423,10 @@ async fn test_move_call_args_linter_command() -> Result<(), anyhow::Error> {
     assert!(err_string.contains("Expected argument of type 0x2::object_basics::Object, but found type 0x2::coin::Coin<0x2::sui::SUI>"));
 
     // Try a proper transfer
-    let obj_str = format!("0x{:02x}", created_obj);
-    let addr2_str = format!("0x{:02x}", address2);
-
-    let args_json = json!([obj_str, addr2_str]);
-    let mut args = vec![];
-    for a in args_json.as_array().unwrap() {
-        args.push(SuiJsonValue::new(a.clone()).unwrap());
-    }
+    let args = vec![
+        SuiJsonValue::new(json!(created_obj))?,
+        SuiJsonValue::new(json!(address2))?,
+    ];
 
     SuiClientCommands::Call {
         package: ObjectID::from_hex_literal("0x2").unwrap(),

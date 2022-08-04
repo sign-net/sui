@@ -7314,6 +7314,7 @@ dependencies = [
  "rand 0.7.3",
  "serde 1.0.141",
  "serde_json",
+ "sha3 0.10.2",
  "signature",
  "sui-config",
  "sui-core",

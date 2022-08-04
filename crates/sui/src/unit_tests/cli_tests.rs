@@ -23,7 +23,7 @@ use sui_json::SuiJsonValue;
 use sui_json_rpc_types::{GetObjectDataResponse, SuiParsedObject, SuiTransactionEffects};
 use sui_sdk::crypto::KeystoreType;
 use sui_sdk::ClientType;
-use sui_types::crypto::{AccountKeyPair, AuthorityKeyPair, KeypairTraits};
+use sui_types::crypto::{AuthorityKeyPair, KeypairTraits};
 use sui_types::{base_types::ObjectID, crypto::get_key_pair, gas_coin::GasCoin};
 
 use test_utils::network::{setup_network_and_wallet, start_test_network};
@@ -83,7 +83,7 @@ async fn test_genesis() -> Result<(), anyhow::Error> {
         panic!()
     }
 
-    assert_eq!(5, wallet_conf.accounts.len());
+    assert_eq!(5, wallet_conf.keystore.init().unwrap().addresses().len());
 
     // Genesis 2nd time should fail
     let result = SuiCommand::Genesis {
@@ -106,7 +106,6 @@ async fn test_addresses_command() -> Result<(), anyhow::Error> {
     let working_dir = temp_dir.path();
 
     let wallet_config = SuiClientConfig {
-        accounts: vec![],
         keystore: KeystoreType::File(working_dir.join(SUI_KEYSTORE_FILENAME)),
         gateway: ClientType::Embedded(GatewayConfig {
             db_folder_path: working_dir.join("client_db"),
@@ -127,18 +126,14 @@ async fn test_addresses_command() -> Result<(), anyhow::Error> {
         active_address: None,
     };
     let wallet_conf_path = working_dir.join(SUI_CLIENT_CONFIG);
-    let mut wallet_config = wallet_config.persisted(&wallet_conf_path);
+    let wallet_config = wallet_config.persisted(&wallet_conf_path);
+    wallet_config.save().unwrap();
+    let mut context = WalletContext::new(&wallet_conf_path).await.unwrap();
 
     // Add 3 accounts
     for _ in 0..3 {
-        wallet_config.accounts.push({
-            let (address, _): (_, AccountKeyPair) = get_key_pair();
-            address
-        });
+        context.keystore.add_key(get_key_pair().1)?;
     }
-    wallet_config.save().unwrap();
-
-    let mut context = WalletContext::new(&wallet_conf_path).await.unwrap();
 
     // Print all addresses
     SuiClientCommands::Addresses
@@ -219,8 +214,8 @@ async fn test_custom_genesis() -> Result<(), anyhow::Error> {
 
     // Wallet config
     let mut context = WalletContext::new(&network.dir().join(SUI_CLIENT_CONFIG)).await?;
-    assert_eq!(1, context.config.accounts.len());
-    let address = context.config.accounts.first().cloned().unwrap();
+    assert_eq!(1, context.keystore.addresses().len());
+    let address = context.keystore.addresses().first().cloned().unwrap();
 
     // Sync client to retrieve objects from the network.
     SuiClientCommands::SyncClientState {
@@ -264,7 +259,7 @@ async fn test_object_info_get_command() -> Result<(), anyhow::Error> {
 #[tokio::test]
 async fn test_gas_command() -> Result<(), anyhow::Error> {
     let (_network, mut context, address) = setup_network_and_wallet().await?;
-    let recipient = context.config.accounts.get(1).cloned().unwrap();
+    let recipient = context.keystore.addresses().get(1).cloned().unwrap();
 
     let object_refs = context
         .gateway
@@ -308,7 +303,7 @@ async fn test_gas_command() -> Result<(), anyhow::Error> {
 #[tokio::test]
 async fn test_move_call_args_linter_command() -> Result<(), anyhow::Error> {
     let (_network, mut context, address1) = setup_network_and_wallet().await?;
-    let address2 = context.config.accounts.get(1).cloned().unwrap();
+    let address2 = context.keystore.addresses().get(1).cloned().unwrap();
 
     // Sync client to retrieve objects from the network.
     SuiClientCommands::SyncClientState {
@@ -525,7 +520,7 @@ async fn test_package_publish_command() -> Result<(), anyhow::Error> {
 #[tokio::test]
 async fn test_native_transfer() -> Result<(), anyhow::Error> {
     let (_network, mut context, address) = setup_network_and_wallet().await?;
-    let recipient = context.config.accounts.get(1).cloned().unwrap();
+    let recipient = context.keystore.addresses().get(1).cloned().unwrap();
 
     let object_refs = context
         .gateway
@@ -705,7 +700,7 @@ async fn test_switch_command() -> Result<(), anyhow::Error> {
     assert_eq!(cmd_objs, actual_objs);
 
     // Switch the address
-    let addr2 = context.config.accounts.get(1).cloned().unwrap();
+    let addr2 = context.keystore.addresses().get(1).cloned().unwrap();
     let resp = SuiClientCommands::Switch {
         address: Some(addr2),
         gateway: None,
@@ -726,14 +721,13 @@ async fn test_switch_command() -> Result<(), anyhow::Error> {
     );
 
     // Wipe all the address info
-    context.config.accounts.clear();
     context.config.active_address = None;
 
     // Create a new address
     let os = SuiClientCommands::NewAddress {}
         .execute(&mut context)
         .await?;
-    let new_addr = if let SuiClientCommandResult::NewAddress(a) = os {
+    let new_addr = if let SuiClientCommandResult::NewAddress((a, _)) = os {
         a
     } else {
         panic!("Command failed")
@@ -793,7 +787,7 @@ async fn test_active_address_command() -> Result<(), anyhow::Error> {
     };
     assert_eq!(a, addr1);
 
-    let addr2 = context.config.accounts.get(1).cloned().unwrap();
+    let addr2 = context.keystore.addresses().get(1).cloned().unwrap();
     let resp = SuiClientCommands::Switch {
         address: Some(addr2),
         gateway: None,
